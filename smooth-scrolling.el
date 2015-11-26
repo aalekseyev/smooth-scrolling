@@ -14,7 +14,7 @@
 ;; This file is not part of GNU Emacs
 
 ;;; License:
-;; 
+;;
 ;; This program is free software; you can redistribute it and/or
 ;; modify it under the terms of the GNU General Public License
 ;; as published by the Free Software Foundation; either version 2
@@ -66,6 +66,10 @@
 ;; cause some slight confusion at first, but hopefully it is justified
 ;; by the benefit of automatically ensuring `smooth-scroll-margin'
 ;; lines of context are visible around the point as often as possible.
+;;
+;; The jump is buggy in the case when you call prev-line (next-line) when
+;; standing on the first (last) visible line though, supposedly because the
+;; normal emacs scrolling kicks in.
 
 ;;; TODO:
 ;;
@@ -178,6 +182,7 @@ with 1 referring to the bottom line in the window."
          (count-screen-lines (point) (window-end)))
         (t
          (count-lines (point) (window-end)))))
+
 ;;;_ + after advice
 
 ;;;###autoload
@@ -187,25 +192,26 @@ lines of the top of the window."
   (and
    ;; Only scroll down if there is buffer above the start of the window.
    (> (line-number-at-pos (window-start)) 1)
-   (let ((lines-from-window-top
-          (smooth-scroll-lines-from-window-top)))
-     (and
-      ;; [GitHub Issue #5] Keyboard macros execute in interactive mode so
-      ;; we need to be careful not to do anything.
-      (not executing-kbd-macro)
-      ;; Only scroll down if we're within the top margin
-      (<= lines-from-window-top smooth-scroll-margin)
-      ;; Only scroll down if we're in the top half of the window
-      (<= lines-from-window-top
+   (let (
+       (lines-from-window-top
+         (smooth-scroll-lines-from-window-top))
+       (effective-scroll-margin (min smooth-scroll-margin
           ;; N.B. `window-height' includes modeline, so if it returned 21,
           ;; that would mean exactly 10 lines in the top half and 10 in
           ;; the bottom.  22 (or any even number) means there's one in the
           ;; middle.  In both cases the following expression will
           ;; yield 10:
-          (/ (1- (window-height)) 2))
+          (/ (1- (window-height)) 2)))
+     )
+     (and
+      ;; [GitHub Issue #5] Keyboard macros execute in interactive mode so
+      ;; we need to be careful not to do anything.
+      (not executing-kbd-macro)
+      ;; Only scroll down if we're within the top margin
+      (<= lines-from-window-top effective-scroll-margin)
       (save-excursion
         (scroll-down
-              (1+ (- smooth-scroll-margin lines-from-window-top))))))))
+              (1+ (- effective-scroll-margin lines-from-window-top))))))))
 
 ;;;###autoload
 (defun smooth-scroll-up ()
@@ -217,18 +223,17 @@ lines of the bottom of the window."
    (not executing-kbd-macro)
    ;; Only scroll up if there is buffer below the end of the window.
    (< (window-end) (buffer-end 1))
-   (let ((lines-from-window-bottom
-          (smooth-scroll-lines-from-window-bottom)))
+   (let
+     ((lines-from-window-bottom
+          (smooth-scroll-lines-from-window-bottom))
+      (effective-scroll-margin (min smooth-scroll-margin (/ (1- (window-height)) 2)))
+     )
      (and
       ;; Only scroll up if we're within the bottom margin
-      (<= lines-from-window-bottom smooth-scroll-margin)
-      ;; Only scroll up if we're in the bottom half of the window.
-      (<= lines-from-window-bottom
-          ;; See above notes on `window-height'.
-          (/ (1- (window-height)) 2))
+      (<= lines-from-window-bottom effective-scroll-margin)
       (save-excursion
         (scroll-up
-         (1+ (- smooth-scroll-margin lines-from-window-bottom))))))))
+         (1+ (- effective-scroll-margin lines-from-window-bottom))))))))
 
 ;;;###autoload
 (defadvice previous-line (after smooth-scroll-down
